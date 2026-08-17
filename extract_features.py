@@ -1,23 +1,21 @@
 import pyshark
-import json
+import requests
 
-print("Loading PCAP file and extracting ML features...\n")
+print("Starting SOC Sensor... Reading PCAP and sending to ML Node...")
 
-# Load the packet capture file
+# The exact IP address and port of your ML Node
+ML_API_URL = "http://10.10.3.10:8000/predict"
+
 capture = pyshark.FileCapture('traffic.pcap')
-
-packet_count = 0
 
 for packet in capture:
     try:
-        # Extract basic features requested in the project plan
         protocol = packet.transport_layer
         src_ip = packet.ip.src
         dst_ip = packet.ip.dst
         byte_length = packet.length
         time_epoch = packet.sniff_timestamp
 
-        # Format the features as a JSON dictionary
         features = {
             "timestamp": float(time_epoch),
             "source_ip": src_ip,
@@ -26,16 +24,13 @@ for packet in capture:
             "bytes": int(byte_length)
         }
 
-        # Print the JSON output (Later, this will be sent via HTTP POST)
-        print(json.dumps(features))
-        packet_count += 1
+        # Send the JSON data to the ML Node over the network!
+        response = requests.post(ML_API_URL, json=features)
 
-        # Stop after 5 packets just for this quick test
-        if packet_count >= 5:
-            break
+        # Print the AI's prediction to the screen
+        print(f"Sensor Sent: {protocol} | AI Reply: {response.json()}")
 
     except AttributeError:
-        # Skip packets that are not standard TCP/UDP (like ARP pings)
         pass
 
-print("\nFeature extraction test complete!")
+print("Sensor transmission complete!")

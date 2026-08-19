@@ -28,6 +28,7 @@ After=network.target
 
 [Service]
 User=root
+Environment=PYTHONPATH=/users/sochamza/.local/lib/python3.10/site-packages
 WorkingDirectory=/users/sochamza/SOC-AI
 ExecStart=/usr/bin/python3 /users/sochamza/SOC-AI/extract_features.py
 Restart=always

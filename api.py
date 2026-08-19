@@ -46,3 +46,14 @@ async def predict_traffic(feature: NetworkFeature):
         "prediction": result,
         "confidence": f"{confidence:.2f}%"
     }
+
+@app.get("/api/alerts")
+def get_alerts():
+    import sqlite3
+    conn = sqlite3.connect("soc_alerts.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM alerts ORDER BY timestamp DESC LIMIT 100;")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(ix) for ix in rows]

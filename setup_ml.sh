@@ -21,7 +21,7 @@ After=network.target
 [Service]
 User=sochamza
 WorkingDirectory=/users/sochamza/SOC-AI
-ExecStart=/usr/local/bin/uvicorn api:app --host 0.0.0.0 --port 8000
+ExecStart=/users/sochamza/.local/bin/uvicorn api:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=3
 

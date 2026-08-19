@@ -18,4 +18,8 @@ echo "4. Starting the engine..."
 sudo systemctl start grafana-server
 sudo systemctl enable grafana-server
 
+echo "5. Installing JSON API Plugin..."
+sudo grafana cli --homepath /usr/share/grafana plugins install marcusolsson-json-datasource
+sudo systemctl restart grafana-server
+
 echo "--- Grafana Installation Complete! ---"

@@ -17,6 +17,9 @@ pip3 install pyshark
 
 echo "Sensor tools installation is complete!"
 
+echo "--- Installing Python dependencies globally for root ---"
+sudo pip3 install pyshark requests
+
 echo "--- Configuring Background Systemd Service for Sensor ---"
 sudo bash -c 'cat <<EOF > /etc/systemd/system/soc-sensor.service
 [Unit]

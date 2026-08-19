@@ -7,7 +7,7 @@ print("Starting Live SOC Sensor on eth1... Sniffing and sending to ML Node...")
 ML_API_URL = "http://10.10.3.10:8000/predict"
 
 # 1. LIVE CAPTURE: Listen directly to the experimental network interface (eth1)
-capture = pyshark.LiveCapture(interface='eth1', bpf_filter='not port 8000')
+capture = pyshark.LiveCapture(interface='eth3')
 
 # 2. CONTINUOUS LOOP: Run infinitely to catch live attacks
 for packet in capture.sniff_continuously():

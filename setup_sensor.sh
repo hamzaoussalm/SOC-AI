@@ -16,3 +16,27 @@ echo "Installing PyShark..."
 pip3 install pyshark
 
 echo "Sensor tools installation is complete!"
+
+echo "--- Configuring Background Systemd Service for Sensor ---"
+sudo bash -c 'cat <<EOF > /etc/systemd/system/soc-sensor.service
+[Unit]
+Description=SOC AI Network Sensor (Live Capture)
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/users/sochamza/SOC-AI
+ExecStart=/usr/bin/python3 /users/sochamza/SOC-AI/extract_features.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF'
+
+echo "--- Enabling and Starting Background Sensor ---"
+sudo systemctl daemon-reload
+sudo systemctl enable soc-sensor
+sudo systemctl restart soc-sensor
+
+echo "--- Sensor Node Setup Complete & Sniffing in Background! ---"

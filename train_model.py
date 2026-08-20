@@ -6,9 +6,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score
 import pickle
 
-print("=" * 60)
-print("  SOC-AI: Flow-Based Multi-Class Model Training")
-print("=" * 60)
+print("=" * 70)
+print("  SOC-AI: Flow Model Training v3")
+print("  PPS is IDENTICAL across classes -> model FORCED to use ports + syn")
+print("=" * 70)
 print()
 
 np.random.seed(42)
@@ -25,128 +26,26 @@ FEATURE_COLUMNS = [
     'protocol_num'
 ]
 
-def generate_normal(n=2000):
-    """Normal browsing, file transfers, DNS, etc."""
-    data = []
-    for _ in range(n):
-        duration = np.random.uniform(1.0, 10.0)
-        pps = np.random.uniform(5, 50)
-        bps = np.random.uniform(500, 50000)
-        avg_size = np.random.uniform(100, 1500)
-        unique_ports = random.randint(1, 3)
-        syn_ratio = np.random.uniform(0.1, 0.3)
-        iat_mean = np.random.uniform(0.01, 0.2)
-        proto = random.choice([6, 17])  # TCP or UDP
-        data.append([duration, pps, bps, avg_size, unique_ports, syn_ratio, iat_mean, proto, 0])
-    return data
-
-def generate_portscan(n=2000):
-    """Nmap-style TCP port scan."""
-    data = []
-    for _ in range(n):
-        duration = np.random.uniform(0.5, 5.0)
-        pps = np.random.uniform(100, 1000)
-        bps = np.random.uniform(6000, 60000)
-        avg_size = np.random.uniform(40, 100)  # Small SYN packets
-        unique_ports = random.randint(10, 100)  # KEY SIGNATURE
-        syn_ratio = np.random.uniform(0.8, 1.0)
-        iat_mean = np.random.uniform(0.001, 0.01)
-        proto = 6  # TCP only
-        data.append([duration, pps, bps, avg_size, unique_ports, syn_ratio, iat_mean, proto, 1])
-    return data
-
-def generate_dos(n=2000):
-    """DoS/DDoS flood (SYN flood or UDP flood)."""
-    data = []
-    for _ in range(n):
-        duration = np.random.uniform(1.0, 10.0)
-        pps = np.random.uniform(500, 5000)  # Extreme rate
-        bps = np.random.uniform(500000, 5000000)
-        avg_size = np.random.uniform(60, 1500)
-        unique_ports = random.randint(1, 2)  # Targeted
-
-        # Split: SYN flood (TCP) vs UDP flood
-        if random.random() > 0.5:
-            syn_ratio = np.random.uniform(0.5, 0.9)
-            proto = 6
-        else:
-            syn_ratio = np.random.uniform(0.0, 0.05)
-            proto = 17
-
-        iat_mean = np.random.uniform(0.0001, 0.001)  # Very bursty
-        data.append([duration, pps, bps, avg_size, unique_ports, syn_ratio, iat_mean, proto, 2])
-    return data
-
-def generate_bruteforce(n=2000):
-    """SSH/FTP brute force."""
-    data = []
-    for _ in range(n):
-        duration = np.random.uniform(5.0, 30.0)
-        pps = np.random.uniform(10, 100)
-        bps = np.random.uniform(1000, 10000)
-        avg_size = np.random.uniform(100, 500)
-        unique_ports = 1  # Always port 22 or 21
-        syn_ratio = np.random.uniform(0.3, 0.5)
-        iat_mean = np.random.uniform(0.05, 1.0)  # Methodical rhythm
-        proto = 6  # TCP only
-        data.append([duration, pps, bps, avg_size, unique_ports, syn_ratio, iat_mean, proto, 3])
-    return data
-
-# --- BUILD DATASET ---
-import pandas as pd
-import numpy as np
-import random
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score
-import pickle
-
-print("=" * 65)
-print("  SOC-AI: Flow-Based Model Training (v2 - Overlapping PPS)")
-print("=" * 65)
-print("""
-STRATEGY:
-- PPS ranges OVERLAP heavily across Normal / PortScan / DoS.
-- The model CANNOT rely on speed alone.
-- PortScan is defined by:  many unique ports  +  high SYN ratio.
-- DoS is defined by:      few unique ports   +  extreme volume.
-- Normal is defined by:   few unique ports   +  low SYN ratio.
-""")
-print()
-
-np.random.seed(42)
-random.seed(42)
-
-FEATURE_COLUMNS = [
-    'flow_duration',
-    'packets_per_second',
-    'bytes_per_second',
-    'avg_packet_size',
-    'unique_dst_ports',
-    'syn_ratio',
-    'iat_mean',
-    'protocol_num'
-]
+# Shared PPS distribution: makes speed information-theoretically useless alone
+def random_pps():
+    """Return PPS from a distribution shared by Normal, PortScan, and DoS."""
+    return np.random.uniform(10, 5000)
 
 # =============================================================================
 # NORMAL TRAFFIC
 # =============================================================================
-# Key signature: LOW unique_dst_ports (1-4), LOW syn_ratio (0.1-0.4)
-# PPS is WIDE (5-1000) to force overlap with PortScan and DoS.
+# Signature: FEW ports (1-4), LOW syn_ratio (0.05-0.35), LARGE packets
 def generate_normal(n=2000):
     data = []
     for _ in range(n):
         duration = np.random.uniform(1.0, 10.0)
-
-        # PPS overlaps with PortScan and DoS deliberately
-        pps = np.random.uniform(5, 1000)
-
-        avg_size = np.random.uniform(200, 1500)
+        pps = random_pps()                      # SAME distribution as attacks
+        avg_size = np.random.uniform(200, 1500) # Normal payloads are large
         bps = pps * avg_size * np.random.uniform(0.8, 1.2)
 
-        unique_ports = random.randint(1, 4)
-        syn_ratio = np.random.uniform(0.1, 0.4)
-        iat_mean = np.random.uniform(0.01, 0.2)
+        unique_ports = random.randint(1, 4)     # Very few ports
+        syn_ratio = np.random.uniform(0.05, 0.35)
+        iat_mean = np.random.uniform(0.01, 0.3)
         proto = random.choice([6, 17])
 
         data.append([duration, pps, bps, avg_size, unique_ports, syn_ratio, iat_mean, proto, 0])
@@ -155,26 +54,24 @@ def generate_normal(n=2000):
 # =============================================================================
 # PORT SCAN
 # =============================================================================
-# Key signature: HIGH unique_dst_ports (10-1000), HIGH syn_ratio (0.7-1.0)
-# PPS is EXTREMELY WIDE (10-5000) so the model sees slow stealth scans,
-# default Nmap scans, AND aggressive scans in the SAME class.
+# Signature: MANY ports (10-1000), MODERATE/HIGH syn_ratio, TINY packets
+# PPS is IDENTICAL to Normal and DoS -> model cannot use speed.
 def generate_portscan(n=2000):
     data = []
     for _ in range(n):
         duration = np.random.uniform(0.5, 5.0)
-
-        # Full range: from stealthy 10 PPS up to aggressive 5000 PPS
-        pps = np.random.uniform(10, 5000)
-
-        # SYN probes are tiny (40-100 bytes)
-        avg_size = np.random.uniform(40, 100)
+        pps = random_pps()                      # SAME distribution
+        avg_size = np.random.uniform(40, 100)   # SYN probes are tiny
         bps = pps * avg_size * np.random.uniform(0.8, 1.2)
 
-        # THE definitive signature: many ports touched
+        # THE definitive signature: many unique destination ports
         unique_ports = random.randint(10, 1000)
-        syn_ratio = np.random.uniform(0.7, 1.0)
+        # Nmap -sS sends mostly SYNs; RST replies from target go to reverse flow
+        # so attacker->target flow is almost pure SYNs (~0.9+).
+        # We use 0.4-0.95 to cover edge cases and stealth scans.
+        syn_ratio = np.random.uniform(0.4, 0.95)
         iat_mean = np.random.uniform(0.0005, 0.05)
-        proto = 6  # TCP only
+        proto = 6
 
         data.append([duration, pps, bps, avg_size, unique_ports, syn_ratio, iat_mean, proto, 1])
     return data
@@ -182,29 +79,25 @@ def generate_portscan(n=2000):
 # =============================================================================
 # DoS / DDoS
 # =============================================================================
-# Key signature: LOW unique_dst_ports (1-2), HIGH volume
-# PPS overlaps with PortScan (50-5000) so the model MUST look at port count.
+# Signature: FEW ports (1-2), VERY HIGH or VERY LOW syn_ratio, variable size
+# PPS is IDENTICAL to Normal and PortScan.
 def generate_dos(n=2000):
     data = []
     for _ in range(n):
         duration = np.random.uniform(1.0, 10.0)
-
-        # Overlaps with PortScan heavily
-        pps = np.random.uniform(50, 5000)
-
-        # DoS packets vary in size (60-1500), unlike the tiny scan probes
-        avg_size = np.random.uniform(60, 1500)
+        pps = random_pps()                      # SAME distribution
+        avg_size = np.random.uniform(60, 1500)  # DoS packets vary in size
         bps = pps * avg_size * np.random.uniform(0.8, 1.2)
 
         # THE definitive signature: targeted (1-2 ports)
         unique_ports = random.randint(1, 2)
 
-        # SYN flood (high syn_ratio) OR UDP flood (near-zero syn_ratio)
+        # TCP SYN flood (high syn) OR UDP flood (near-zero syn)
         if random.random() > 0.5:
-            syn_ratio = np.random.uniform(0.5, 0.9)
+            syn_ratio = np.random.uniform(0.7, 1.0)  # Pure SYN flood
             proto = 6
         else:
-            syn_ratio = np.random.uniform(0.0, 0.05)
+            syn_ratio = np.random.uniform(0.0, 0.1)  # UDP flood
             proto = 17
 
         iat_mean = np.random.uniform(0.0001, 0.005)
@@ -215,19 +108,17 @@ def generate_dos(n=2000):
 # =============================================================================
 # BRUTE FORCE
 # =============================================================================
-# Key signature: EXACTLY 1 port (SSH/FTP), moderate syn_ratio, methodical IAT
-# PPS is low (5-100) but can overlap with slow Normal or stealth PortScan.
+# Signature: EXACTLY 1 port, moderate syn_ratio, methodical timing
 def generate_bruteforce(n=2000):
     data = []
     for _ in range(n):
         duration = np.random.uniform(5.0, 30.0)
-
-        pps = np.random.uniform(5, 100)
+        pps = np.random.uniform(5, 300)         # Can overlap with slow traffic
         avg_size = np.random.uniform(100, 500)
         bps = pps * avg_size * np.random.uniform(0.8, 1.2)
 
         unique_ports = 1
-        syn_ratio = np.random.uniform(0.3, 0.6)
+        syn_ratio = np.random.uniform(0.25, 0.55)
         iat_mean = np.random.uniform(0.05, 1.0)
         proto = 6
 
@@ -235,18 +126,18 @@ def generate_bruteforce(n=2000):
     return data
 
 # =============================================================================
-# BUILD DATASET
+# BUILD & SHUFFLE DATASET
 # =============================================================================
-print("1. Synthesizing Normal traffic flows...")
+print("1. Generating Normal...")
 normal = generate_normal(2000)
 
-print("2. Synthesizing Port Scan flows (PPS: 10-5000)...")
+print("2. Generating PortScan (PPS identical to Normal/DoS)...")
 portscan = generate_portscan(2000)
 
-print("3. Synthesizing DoS/DDoS flows (PPS: 50-5000)...")
+print("3. Generating DoS (PPS identical to Normal/PortScan)...")
 dos = generate_dos(2000)
 
-print("4. Synthesizing Brute Force flows...")
+print("4. Generating BruteForce...")
 bruteforce = generate_bruteforce(2000)
 
 all_data = normal + portscan + dos + bruteforce
@@ -256,42 +147,39 @@ df = pd.DataFrame(all_data, columns=FEATURE_COLUMNS + ['label'])
 X = df[FEATURE_COLUMNS]
 y = df['label']
 
-print(f"\n--- Dataset Statistics ---")
-print(f"Total samples: {len(df)}")
-print(f"Class distribution:")
-print(df['label'].value_counts().sort_index())
+print(f"\n--- Dataset ---")
+print(f"Total: {len(df)} | Class distribution:\n{df['label'].value_counts().sort_index()}")
 print("  0=Normal | 1=PortScan | 2=DoS | 3=BruteForce")
 
-# Verify PPS overlap
-print(f"\n--- PPS Range Verification ---")
+# Prove PPS is identical across classes
+print(f"\n--- PPS Statistics by Class (should be nearly identical) ---")
 for lbl, name in [(0, "Normal"), (1, "PortScan"), (2, "DoS"), (3, "BruteForce")]:
     subset = df[df['label'] == lbl]['packets_per_second']
-    print(f"  {name:12s}: min={subset.min():8.1f}  max={subset.max():9.1f}")
+    print(f"  {name:12s}: mean={subset.mean():8.1f}  std={subset.std():8.1f}")
 
 # =============================================================================
-# TRAIN / TEST SPLIT
+# TRAIN
 # =============================================================================
-print(f"\n5. Training Random Forest (100 estimators)...")
+print(f"\n5. Training Random Forest (200 trees)...")
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
 model = RandomForestClassifier(
-    n_estimators=100,
+    n_estimators=200,
     random_state=42,
     n_jobs=-1
 )
 model.fit(X_train, y_train)
 
 # =============================================================================
-# EVALUATION
+# EVALUATE
 # =============================================================================
-print("6. Evaluating model...")
+print("6. Evaluating...")
 predictions = model.predict(X_test)
 accuracy = accuracy_score(y_test, predictions)
 
-print(f"\n--> Overall Accuracy: {accuracy * 100:.2f}%")
-print("\nDetailed Classification Report:")
+print(f"\n--> Accuracy: {accuracy * 100:.2f}%")
 print(classification_report(
     y_test, predictions,
     target_names=["Normal", "PortScan", "DoS", "BruteForce"]
@@ -303,19 +191,35 @@ print(classification_report(
 print("\n--- Feature Importances (Top → Bottom) ---")
 importances = pd.Series(model.feature_importances_, index=FEATURE_COLUMNS)
 print(importances.sort_values(ascending=False).to_string())
-print("""
-EXPECTED: unique_dst_ports and syn_ratio should be at the TOP.
-If packets_per_second is still #1, the overlap was insufficient.
-""")
+print("\nEXPECTED: unique_dst_ports and syn_ratio at the very top.")
+print("If packets_per_second is still #1, the distributions did not overlap enough.")
 
 # =============================================================================
-# SAVE MODEL
+# QUICK SANITY CHECK ON SYNTHETIC VECTORS
 # =============================================================================
-print("\n7. Saving model as 'model_flow.pkl'...")
+print("\n--- Sanity Check: Synthetic Vectors ---")
+test_vectors = [
+    ("Fast Nmap",   [2.0, 1500, 105000, 70,  800, 0.95, 0.001,  6]),
+    ("Slow Nmap",   [2.0,   40,   2800, 70,   80, 0.95, 0.025,  6]),
+    ("DoS SYN",     [2.0, 1500,  90000, 60,    1, 1.00, 0.0005, 6]),
+    ("DoS UDP",     [2.0, 1500, 120000, 80,    1, 0.00, 0.0005, 17]),
+    ("Normal HTTP", [5.0,  150, 150000, 1000,  2, 0.20, 0.100,  6]),
+    ("Brute SSH",   [10.,   50,  20000, 400,   1, 0.40, 0.500,  6]),
+]
+
+labels = {0: "Normal", 1: "PortScan", 2: "DoS", 3: "BruteForce"}
+for name, vec in test_vectors:
+    pred = model.predict([vec])[0]
+    proba = model.predict_proba([vec])[0].max() * 100
+    print(f"  {name:15s} -> {labels[pred]:10s} ({proba:.1f}%)")
+
+# =============================================================================
+# SAVE
+# =============================================================================
+print("\n7. Saving model_flow.pkl...")
 with open('model_flow.pkl', 'wb') as file:
     pickle.dump(model, file)
 
-print("=" * 65)
-print("  SUCCESS: model_flow.pkl is ready.")
-print("  Restart your ML Node service to load the new brain.")
-print("=" * 65)
+print("=" * 70)
+print("  DONE. Run 'sudo systemctl restart soc-ai' to load the new model.")
+print("=" * 70)
